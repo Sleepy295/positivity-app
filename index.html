@@ -71,16 +71,35 @@
     margin-bottom: .5rem;
   }
 
-  h1 em {
-    font-style: italic;
-    color: var(--teal);
-  }
+  h1 em { font-style: italic; color: var(--teal); }
 
   .subtitle {
     font-size: 15px;
     color: var(--text-muted);
     margin-bottom: 2rem;
   }
+
+  .live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--teal-dark);
+    background: var(--teal-light);
+    padding: 3px 10px;
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+  }
+
+  .live-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--teal);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
   .tabs {
     display: flex;
@@ -208,6 +227,29 @@
     font-size: 12px;
     color: var(--text-faint);
     margin-top: .75rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .card-meta a {
+    color: var(--teal);
+    text-decoration: none;
+    font-size: 11px;
+  }
+
+  .card-meta a:hover { text-decoration: underline; }
+
+  .source-tag {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--teal-dark);
+    background: var(--teal-light);
+    padding: 2px 7px;
+    border-radius: 8px;
   }
 
   .quote-text {
@@ -298,6 +340,30 @@
   }
 
   .key-save-btn:hover { opacity: .85; }
+
+  .loading-placeholder {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .skeleton {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.25rem;
+    opacity: .6;
+  }
+
+  .skel-line {
+    height: 12px;
+    border-radius: 6px;
+    background: var(--border);
+    margin-bottom: 10px;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  @keyframes shimmer { 0%,100%{opacity:.5} 50%{opacity:1} }
 </style>
 </head>
 <body>
@@ -305,7 +371,11 @@
 <header>
   <div class="wordmark">Positivity</div>
   <h1>Good things are<br><em>happening everywhere</em></h1>
-  <p class="subtitle">Good news, inspiring quotes, and beautiful words — from every corner of the world.</p>
+  <p class="subtitle">Real live good news, inspiring quotes, and beautiful words — from every corner of the world.</p>
+  <div class="live-badge">
+    <span class="live-dot"></span>
+    Live news from Good News Network
+  </div>
   <div class="tabs">
     <button class="tab active" onclick="switchTab('news', this)">Good news</button>
     <button class="tab" onclick="switchTab('quotes', this)">Quotes</button>
@@ -316,17 +386,17 @@
 <main>
 
   <div id="key-setup-banner" class="key-setup" style="display:none">
-    <p>To load fresh content, paste your Anthropic API key below. It's saved only in your browser — never sent anywhere except directly to Anthropic.</p>
+    <p>To load content, paste your Anthropic API key below. It's saved only in your browser — never sent anywhere except directly to Anthropic.</p>
     <input type="password" id="api-key-input" placeholder="sk-ant-..." />
     <button class="key-save-btn" onclick="saveKey()">Save key &amp; load content</button>
   </div>
 
   <div id="news" class="section active">
     <div class="section-header">
-      <span class="section-label">Uplifting stories</span>
-      <button class="fetch-btn" id="news-btn" onclick="fetchContent('news')">
+      <span class="section-label">Today's uplifting stories</span>
+      <button class="fetch-btn" id="news-btn" onclick="fetchNews()">
         <span class="spinner"></span>
-        <span class="btn-label">Refresh stories</span>
+        <span class="btn-label">Refresh</span>
       </button>
     </div>
     <div class="cards" id="news-cards"></div>
@@ -361,17 +431,14 @@
 
 <script>
 const PROMPTS = {
-  news: `Give me 4 uplifting, real good news stories from around the world. Different countries each time. Respond ONLY with a JSON array, no markdown, no extra text. Each item: {"country": "Country name", "flag": "flag emoji", "category": "one of: Environment, Wildlife, Community, Health, Education, Science", "title": "headline", "body": "2-3 sentence description"}`,
-
   quotes: `Give me 5 inspiring quotes or proverbs from different cultures and languages around the world. Mix ancient proverbs with modern thinkers. Respond ONLY with a JSON array, no markdown, no extra text. Each item: {"flag": "flag emoji of origin country", "origin": "Country or culture name", "native": "original phrase in native language if not English, otherwise empty string", "quote": "the quote in English", "attribution": "person or source"}`,
-
   words: `Give me 4 beautiful untranslatable words from different languages around the world — words that capture feelings or concepts English has no word for. Respond ONLY with a JSON array, no markdown, no extra text. Each item: {"word": "the word", "flag": "flag emoji", "language": "language name and country", "native_script": "word in native script if different from latin, else empty string", "meaning": "2-3 sentence poetic explanation of what it means"}`
 };
 
 const TAG_COLORS = {
-  Environment: 'teal', Wildlife: 'teal', Science: 'teal',
-  Community: 'amber', Health: 'amber',
-  Education: 'purple'
+  Environment: 'teal', Wildlife: 'teal', Science: 'teal', Animals: 'teal', Earth: 'teal',
+  Community: 'amber', Health: 'amber', Heroes: 'amber', Inspiring: 'amber',
+  Education: 'purple', Arts: 'purple', World: 'purple'
 };
 
 let apiKey = localStorage.getItem('positivity_api_key') || '';
@@ -380,20 +447,20 @@ function init() {
   if (!apiKey) {
     document.getElementById('key-setup-banner').style.display = 'block';
   } else {
-    fetchContent('news');
+    fetchNews();
   }
 }
 
 function saveKey() {
   const val = document.getElementById('api-key-input').value.trim();
   if (!val.startsWith('sk-ant-')) {
-    alert('That doesn\'t look like an Anthropic API key. It should start with sk-ant-');
+    alert("That doesn't look like an Anthropic API key. It should start with sk-ant-");
     return;
   }
   apiKey = val;
   localStorage.setItem('positivity_api_key', apiKey);
   document.getElementById('key-setup-banner').style.display = 'none';
-  fetchContent('news');
+  fetchNews();
 }
 
 function switchTab(id, btn) {
@@ -402,20 +469,123 @@ function switchTab(id, btn) {
   document.getElementById(id).classList.add('active');
   btn.classList.add('active');
   const cards = document.getElementById(id + '-cards');
-  if (!cards.children.length) fetchContent(id);
+  if (!cards.children.length) {
+    if (id === 'news') fetchNews();
+    else fetchContent(id);
+  }
+}
+
+function showSkeleton(containerId) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = `
+    <div class="loading-placeholder">
+      ${[1,2,3,4].map(() => `
+        <div class="skeleton">
+          <div class="skel-line" style="width:30%;margin-bottom:12px"></div>
+          <div class="skel-line" style="width:85%"></div>
+          <div class="skel-line" style="width:70%"></div>
+          <div class="skel-line" style="width:90%;margin-top:8px"></div>
+          <div class="skel-line" style="width:60%"></div>
+        </div>`).join('')}
+    </div>`;
+}
+
+async function fetchNews() {
+  if (!apiKey) { document.getElementById('key-setup-banner').style.display = 'block'; return; }
+
+  const btn = document.getElementById('news-btn');
+  const errorEl = document.getElementById('news-error');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  errorEl.innerHTML = '';
+  showSkeleton('news-cards');
+
+  try {
+    const RSS_URL = 'https://goodnewsnetwork.org/feed/';
+    const API_URL = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(RSS_URL)}&count=8`;
+
+    const rssRes = await fetch(API_URL);
+    const rssData = await rssRes.json();
+
+    if (!rssData.items || rssData.items.length === 0) throw new Error('Could not load news feed');
+
+    const headlines = rssData.items.slice(0, 6).map(item => ({
+      title: item.title,
+      description: item.description ? item.description.replace(/<[^>]*>/g, '').slice(0, 200) : '',
+      link: item.link,
+      date: item.pubDate ? new Date(item.pubDate).toLocaleDateString('en-US', {month:'short', day:'numeric'}) : '',
+      category: item.categories && item.categories[0] ? item.categories[0] : 'Inspiring'
+    }));
+
+    const prompt = `Here are ${headlines.length} real news headlines from Good News Network. For each one, write a warm 2-sentence summary that captures why this story is uplifting. Also pick a relevant flag emoji for the country/region most relevant to each story, and assign a category from: Environment, Wildlife, Community, Health, Education, Science, Inspiring, World, Animals.
+
+Headlines:
+${headlines.map((h,i) => `${i+1}. "${h.title}" — ${h.description}`).join('\n')}
+
+Respond ONLY with a JSON array, no markdown, no extra text. Each item must include: {"index": 0, "summary": "warm 2-sentence summary", "flag": "flag emoji", "category": "category"}`;
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!aiRes.ok) {
+      const err = await aiRes.json();
+      throw new Error(err.error?.message || 'AI error ' + aiRes.status);
+    }
+
+    const aiData = await aiRes.json();
+    let text = aiData.content[0].text.trim().replace(/```json|```/g, '').trim();
+    const enriched = JSON.parse(text);
+
+    const container = document.getElementById('news-cards');
+    container.innerHTML = '';
+
+    enriched.forEach((item, i) => {
+      const h = headlines[item.index !== undefined ? item.index : i];
+      if (!h) return;
+      const color = TAG_COLORS[item.category] || 'teal';
+      container.innerHTML += `
+        <div class="card">
+          <span class="card-tag tag-${color}">${item.category}</span>
+          <div class="card-title">${h.title}</div>
+          <div class="card-body">${item.summary}</div>
+          <div class="card-meta">
+            ${item.flag} ${h.date}
+            <span class="source-tag">Good News Network</span>
+            <a href="${h.link}" target="_blank" rel="noopener">Read full story →</a>
+          </div>
+        </div>`;
+    });
+
+  } catch (e) {
+    document.getElementById('news-cards').innerHTML = '';
+    errorEl.innerHTML = `<div class="error-msg">Couldn't load live news: ${e.message}. Try refreshing.</div>`;
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
 }
 
 async function fetchContent(type) {
-  if (!apiKey) {
-    document.getElementById('key-setup-banner').style.display = 'block';
-    return;
-  }
+  if (!apiKey) { document.getElementById('key-setup-banner').style.display = 'block'; return; }
 
   const btn = document.getElementById(type + '-btn');
   const errorEl = document.getElementById(type + '-error');
   btn.classList.add('loading');
   btn.disabled = true;
   errorEl.innerHTML = '';
+  showSkeleton(type + '-cards');
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -427,7 +597,7 @@ async function fetchContent(type) {
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 1200,
         messages: [{ role: 'user', content: PROMPTS[type] }]
       })
@@ -439,13 +609,13 @@ async function fetchContent(type) {
     }
 
     const data = await res.json();
-    let text = data.content[0].text.trim();
-    text = text.replace(/```json|```/g, '').trim();
+    let text = data.content[0].text.trim().replace(/```json|```/g, '').trim();
     const items = JSON.parse(text);
     renderCards(type, items);
 
   } catch (e) {
-    errorEl.innerHTML = `<div class="error-msg">Something went wrong: ${e.message}. Check your API key or try again.</div>`;
+    document.getElementById(type + '-cards').innerHTML = '';
+    errorEl.innerHTML = `<div class="error-msg">Something went wrong: ${e.message}. Try again.</div>`;
   } finally {
     btn.classList.remove('loading');
     btn.disabled = false;
@@ -455,19 +625,6 @@ async function fetchContent(type) {
 function renderCards(type, items) {
   const container = document.getElementById(type + '-cards');
   container.innerHTML = '';
-
-  if (type === 'news') {
-    items.forEach(item => {
-      const color = TAG_COLORS[item.category] || 'teal';
-      container.innerHTML += `
-        <div class="card">
-          <span class="card-tag tag-${color}">${item.category}</span>
-          <div class="card-title">${item.title}</div>
-          <div class="card-body">${item.body}</div>
-          <div class="card-meta">${item.flag} ${item.country}</div>
-        </div>`;
-    });
-  }
 
   if (type === 'quotes') {
     items.forEach(item => {
@@ -483,7 +640,661 @@ function renderCards(type, items) {
     items.forEach(item => {
       container.innerHTML += `
         <div class="card">
-          <div class="word-title">${item.word}${item.native_script ? ' <span style="color:var(--text-faint);font-size:18px">· ${item.native_script}</span>' : ''}</div>
+          <div class="word-title">${item.word}${item.native_script ? ' <span style="color:var(--text-faint);font-size:18px">· ' + item.native_script + '</span>' : ''}</div>
+          <div class="word-lang">${item.flag} ${item.language}</div>
+          <div class="word-meaning">${item.meaning}</div>
+        </div>`;
+    });
+  }
+}
+
+init();
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Positivity — good news, quotes & beautiful words</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --teal: #1D9E75;
+    --teal-light: #E1F5EE;
+    --teal-dark: #0F6E56;
+    --amber: #BA7517;
+    --amber-light: #FAEEDA;
+    --purple: #7F77DD;
+    --purple-light: #EEEDFE;
+    --purple-dark: #3C3489;
+    --text: #1a1a1a;
+    --text-muted: #6b6b6b;
+    --text-faint: #9e9e9e;
+    --bg: #fafaf8;
+    --bg-card: #ffffff;
+    --border: rgba(0,0,0,0.08);
+    --border-hover: rgba(0,0,0,0.15);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --text: #e8e6e0;
+      --text-muted: #a0a09a;
+      --text-faint: #6a6a64;
+      --bg: #141412;
+      --bg-card: #1e1e1a;
+      --border: rgba(255,255,255,0.08);
+      --border-hover: rgba(255,255,255,0.15);
+      --teal-light: #04342C;
+      --amber-light: #412402;
+      --purple-light: #26215C;
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+
+  header {
+    padding: 3rem 1.5rem 2rem;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  .wordmark {
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--teal);
+    margin-bottom: 1rem;
+  }
+
+  h1 {
+    font-size: clamp(28px, 5vw, 42px);
+    font-weight: 400;
+    line-height: 1.2;
+    color: var(--text);
+    margin-bottom: .5rem;
+  }
+
+  h1 em { font-style: italic; color: var(--teal); }
+
+  .subtitle {
+    font-size: 15px;
+    color: var(--text-muted);
+    margin-bottom: 2rem;
+  }
+
+  .live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--teal-dark);
+    background: var(--teal-light);
+    padding: 3px 10px;
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+  }
+
+  .live-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--teal);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .tab {
+    padding: 8px 18px;
+    border-radius: 24px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    transition: all .2s;
+    font-family: inherit;
+  }
+
+  .tab:hover { border-color: var(--border-hover); color: var(--text); }
+  .tab.active { background: var(--teal); color: #fff; border-color: var(--teal); }
+
+  main {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 0 1.5rem 4rem;
+  }
+
+  .section { display: none; }
+  .section.active { display: block; }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.25rem;
+    padding-top: .25rem;
+  }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .fetch-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    transition: all .2s;
+    font-family: inherit;
+  }
+
+  .fetch-btn:hover { border-color: var(--teal); color: var(--teal); }
+  .fetch-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  .spinner {
+    width: 12px; height: 12px;
+    border: 1.5px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    display: none;
+  }
+
+  .fetch-btn.loading .spinner { display: block; }
+  .fetch-btn.loading .btn-label { display: none; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .cards { display: flex; flex-direction: column; gap: 12px; }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.25rem;
+    transition: border-color .2s;
+    animation: fadeIn .4s ease;
+  }
+
+  .card:hover { border-color: var(--border-hover); }
+
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .card-tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 12px;
+    margin-bottom: .75rem;
+  }
+
+  .tag-teal { background: var(--teal-light); color: var(--teal-dark); }
+  .tag-amber { background: var(--amber-light); color: var(--amber); }
+  .tag-purple { background: var(--purple-light); color: var(--purple-dark); }
+
+  .card-title {
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.5;
+    margin-bottom: .5rem;
+    color: var(--text);
+  }
+
+  .card-body {
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.7;
+  }
+
+  .card-meta {
+    font-size: 12px;
+    color: var(--text-faint);
+    margin-top: .75rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .card-meta a {
+    color: var(--teal);
+    text-decoration: none;
+    font-size: 11px;
+  }
+
+  .card-meta a:hover { text-decoration: underline; }
+
+  .source-tag {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--teal-dark);
+    background: var(--teal-light);
+    padding: 2px 7px;
+    border-radius: 8px;
+  }
+
+  .quote-text {
+    font-size: 17px;
+    line-height: 1.7;
+    color: var(--text);
+    border-left: 2px solid var(--teal);
+    padding-left: 1rem;
+    margin-bottom: .75rem;
+    font-style: italic;
+  }
+
+  .quote-attr {
+    font-size: 12px;
+    color: var(--text-faint);
+    padding-left: 1rem;
+  }
+
+  .word-title {
+    font-size: 24px;
+    font-weight: 400;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .word-lang {
+    font-size: 12px;
+    color: var(--text-faint);
+    margin-bottom: .75rem;
+  }
+
+  .word-meaning {
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.7;
+  }
+
+  .error-msg {
+    font-size: 13px;
+    color: #c0392b;
+    padding: 1rem;
+    background: #fdf0ee;
+    border-radius: 10px;
+    margin-top: 1rem;
+  }
+
+  .key-setup {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .key-setup p {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    line-height: 1.6;
+  }
+
+  .key-setup input {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    font-family: monospace;
+    margin-bottom: 10px;
+    outline: none;
+  }
+
+  .key-setup input:focus { border-color: var(--teal); }
+
+  .key-save-btn {
+    padding: 9px 20px;
+    border-radius: 20px;
+    background: var(--teal);
+    color: #fff;
+    border: none;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity .2s;
+  }
+
+  .key-save-btn:hover { opacity: .85; }
+
+  .loading-placeholder {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .skeleton {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.25rem;
+    opacity: .6;
+  }
+
+  .skel-line {
+    height: 12px;
+    border-radius: 6px;
+    background: var(--border);
+    margin-bottom: 10px;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  @keyframes shimmer { 0%,100%{opacity:.5} 50%{opacity:1} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">Positivity</div>
+  <h1>Good things are<br><em>happening everywhere</em></h1>
+  <p class="subtitle">Real live good news, inspiring quotes, and beautiful words — from every corner of the world.</p>
+  <div class="live-badge">
+    <span class="live-dot"></span>
+    Live news from Good News Network
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('news', this)">Good news</button>
+    <button class="tab" onclick="switchTab('quotes', this)">Quotes</button>
+    <button class="tab" onclick="switchTab('words', this)">Beautiful words</button>
+  </div>
+</header>
+
+<main>
+
+  <div id="key-setup-banner" class="key-setup" style="display:none">
+    <p>To load content, paste your Anthropic API key below. It's saved only in your browser — never sent anywhere except directly to Anthropic.</p>
+    <input type="password" id="api-key-input" placeholder="sk-ant-..." />
+    <button class="key-save-btn" onclick="saveKey()">Save key &amp; load content</button>
+  </div>
+
+  <div id="news" class="section active">
+    <div class="section-header">
+      <span class="section-label">Today's uplifting stories</span>
+      <button class="fetch-btn" id="news-btn" onclick="fetchNews()">
+        <span class="spinner"></span>
+        <span class="btn-label">Refresh</span>
+      </button>
+    </div>
+    <div class="cards" id="news-cards"></div>
+    <div id="news-error"></div>
+  </div>
+
+  <div id="quotes" class="section">
+    <div class="section-header">
+      <span class="section-label">Words of wisdom</span>
+      <button class="fetch-btn" id="quotes-btn" onclick="fetchContent('quotes')">
+        <span class="spinner"></span>
+        <span class="btn-label">Refresh quotes</span>
+      </button>
+    </div>
+    <div class="cards" id="quotes-cards"></div>
+    <div id="quotes-error"></div>
+  </div>
+
+  <div id="words" class="section">
+    <div class="section-header">
+      <span class="section-label">Untranslatable beauty</span>
+      <button class="fetch-btn" id="words-btn" onclick="fetchContent('words')">
+        <span class="spinner"></span>
+        <span class="btn-label">Refresh words</span>
+      </button>
+    </div>
+    <div class="cards" id="words-cards"></div>
+    <div id="words-error"></div>
+  </div>
+
+</main>
+
+<script>
+const PROMPTS = {
+  quotes: `Give me 5 inspiring quotes or proverbs from different cultures and languages around the world. Mix ancient proverbs with modern thinkers. Respond ONLY with a JSON array, no markdown, no extra text. Each item: {"flag": "flag emoji of origin country", "origin": "Country or culture name", "native": "original phrase in native language if not English, otherwise empty string", "quote": "the quote in English", "attribution": "person or source"}`,
+  words: `Give me 4 beautiful untranslatable words from different languages around the world — words that capture feelings or concepts English has no word for. Respond ONLY with a JSON array, no markdown, no extra text. Each item: {"word": "the word", "flag": "flag emoji", "language": "language name and country", "native_script": "word in native script if different from latin, else empty string", "meaning": "2-3 sentence poetic explanation of what it means"}`
+};
+
+const TAG_COLORS = {
+  Environment: 'teal', Wildlife: 'teal', Science: 'teal', Animals: 'teal', Earth: 'teal',
+  Community: 'amber', Health: 'amber', Heroes: 'amber', Inspiring: 'amber',
+  Education: 'purple', Arts: 'purple', World: 'purple'
+};
+
+let apiKey = localStorage.getItem('positivity_api_key') || '';
+
+function init() {
+  if (!apiKey) {
+    document.getElementById('key-setup-banner').style.display = 'block';
+  } else {
+    fetchNews();
+  }
+}
+
+function saveKey() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val.startsWith('sk-ant-')) {
+    alert("That doesn't look like an Anthropic API key. It should start with sk-ant-");
+    return;
+  }
+  apiKey = val;
+  localStorage.setItem('positivity_api_key', apiKey);
+  document.getElementById('key-setup-banner').style.display = 'none';
+  fetchNews();
+}
+
+function switchTab(id, btn) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+  const cards = document.getElementById(id + '-cards');
+  if (!cards.children.length) {
+    if (id === 'news') fetchNews();
+    else fetchContent(id);
+  }
+}
+
+function showSkeleton(containerId) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = `
+    <div class="loading-placeholder">
+      ${[1,2,3,4].map(() => `
+        <div class="skeleton">
+          <div class="skel-line" style="width:30%;margin-bottom:12px"></div>
+          <div class="skel-line" style="width:85%"></div>
+          <div class="skel-line" style="width:70%"></div>
+          <div class="skel-line" style="width:90%;margin-top:8px"></div>
+          <div class="skel-line" style="width:60%"></div>
+        </div>`).join('')}
+    </div>`;
+}
+
+async function fetchNews() {
+  if (!apiKey) { document.getElementById('key-setup-banner').style.display = 'block'; return; }
+
+  const btn = document.getElementById('news-btn');
+  const errorEl = document.getElementById('news-error');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  errorEl.innerHTML = '';
+  showSkeleton('news-cards');
+
+  try {
+    const RSS_URL = 'https://goodnewsnetwork.org/feed/';
+    const API_URL = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(RSS_URL)}&count=8`;
+
+    const rssRes = await fetch(API_URL);
+    const rssData = await rssRes.json();
+
+    if (!rssData.items || rssData.items.length === 0) throw new Error('Could not load news feed');
+
+    const headlines = rssData.items.slice(0, 6).map(item => ({
+      title: item.title,
+      description: item.description ? item.description.replace(/<[^>]*>/g, '').slice(0, 200) : '',
+      link: item.link,
+      date: item.pubDate ? new Date(item.pubDate).toLocaleDateString('en-US', {month:'short', day:'numeric'}) : '',
+      category: item.categories && item.categories[0] ? item.categories[0] : 'Inspiring'
+    }));
+
+    const prompt = `Here are ${headlines.length} real news headlines from Good News Network. For each one, write a warm 2-sentence summary that captures why this story is uplifting. Also pick a relevant flag emoji for the country/region most relevant to each story, and assign a category from: Environment, Wildlife, Community, Health, Education, Science, Inspiring, World, Animals.
+
+Headlines:
+${headlines.map((h,i) => `${i+1}. "${h.title}" — ${h.description}`).join('\n')}
+
+Respond ONLY with a JSON array, no markdown, no extra text. Each item must include: {"index": 0, "summary": "warm 2-sentence summary", "flag": "flag emoji", "category": "category"}`;
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!aiRes.ok) {
+      const err = await aiRes.json();
+      throw new Error(err.error?.message || 'AI error ' + aiRes.status);
+    }
+
+    const aiData = await aiRes.json();
+    let text = aiData.content[0].text.trim().replace(/```json|```/g, '').trim();
+    const enriched = JSON.parse(text);
+
+    const container = document.getElementById('news-cards');
+    container.innerHTML = '';
+
+    enriched.forEach((item, i) => {
+      const h = headlines[item.index !== undefined ? item.index : i];
+      if (!h) return;
+      const color = TAG_COLORS[item.category] || 'teal';
+      container.innerHTML += `
+        <div class="card">
+          <span class="card-tag tag-${color}">${item.category}</span>
+          <div class="card-title">${h.title}</div>
+          <div class="card-body">${item.summary}</div>
+          <div class="card-meta">
+            ${item.flag} ${h.date}
+            <span class="source-tag">Good News Network</span>
+            <a href="${h.link}" target="_blank" rel="noopener">Read full story →</a>
+          </div>
+        </div>`;
+    });
+
+  } catch (e) {
+    document.getElementById('news-cards').innerHTML = '';
+    errorEl.innerHTML = `<div class="error-msg">Couldn't load live news: ${e.message}. Try refreshing.</div>`;
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+async function fetchContent(type) {
+  if (!apiKey) { document.getElementById('key-setup-banner').style.display = 'block'; return; }
+
+  const btn = document.getElementById(type + '-btn');
+  const errorEl = document.getElementById(type + '-error');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  errorEl.innerHTML = '';
+  showSkeleton(type + '-cards');
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1200,
+        messages: [{ role: 'user', content: PROMPTS[type] }]
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'API error ' + res.status);
+    }
+
+    const data = await res.json();
+    let text = data.content[0].text.trim().replace(/```json|```/g, '').trim();
+    const items = JSON.parse(text);
+    renderCards(type, items);
+
+  } catch (e) {
+    document.getElementById(type + '-cards').innerHTML = '';
+    errorEl.innerHTML = `<div class="error-msg">Something went wrong: ${e.message}. Try again.</div>`;
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+function renderCards(type, items) {
+  const container = document.getElementById(type + '-cards');
+  container.innerHTML = '';
+
+  if (type === 'quotes') {
+    items.forEach(item => {
+      container.innerHTML += `
+        <div class="card">
+          <div class="quote-text">${item.quote}</div>
+          <div class="quote-attr">${item.flag} ${item.attribution}${item.native ? ' · <em>' + item.native + '</em>' : ''} — ${item.origin}</div>
+        </div>`;
+    });
+  }
+
+  if (type === 'words') {
+    items.forEach(item => {
+      container.innerHTML += `
+        <div class="card">
+          <div class="word-title">${item.word}${item.native_script ? ' <span style="color:var(--text-faint);font-size:18px">· ' + item.native_script + '</span>' : ''}</div>
           <div class="word-lang">${item.flag} ${item.language}</div>
           <div class="word-meaning">${item.meaning}</div>
         </div>`;
