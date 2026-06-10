@@ -375,6 +375,7 @@
   <div class="live-badge">
     <span class="live-dot"></span>
     Live news from Good News Network
+    <span id="last-updated" style="margin-left:6px;opacity:.7"></span>
   </div>
   <div class="tabs">
     <button class="tab active" onclick="switchTab('news', this)">Good news</button>
@@ -498,7 +499,18 @@ async function fetchNews() {
   btn.classList.add('loading');
   btn.disabled = true;
   errorEl.innerHTML = '';
-  showSkeleton('news-cards');
+
+  const cached = localStorage.getItem('positivity_news_cache');
+  const cachedTime = localStorage.getItem('positivity_news_time');
+  if (cached) {
+    renderNewsCards(JSON.parse(cached));
+    if (cachedTime) {
+      const el = document.getElementById('last-updated');
+      if (el) el.textContent = '· updated ' + new Date(parseInt(cachedTime)).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
+    }
+  } else {
+    showSkeleton('news-cards');
+  }
 
   try {
     const RSS_URL = 'https://goodnewsnetwork.org/feed/';
@@ -572,25 +584,14 @@ Respond ONLY with a JSON array, no markdown, no extra text. Each item must inclu
     let text = aiData.content[0].text.trim().replace(/```json|```/g, '').trim();
     const enriched = JSON.parse(text);
 
-    const container = document.getElementById('news-cards');
-    container.innerHTML = '';
+    const combined = enriched.map((item, i) => ({
+      ...item,
+      ...headlines[item.index !== undefined ? item.index : i]
+    })).filter(item => item.title);
 
-    enriched.forEach((item, i) => {
-      const h = headlines[item.index !== undefined ? item.index : i];
-      if (!h) return;
-      const color = TAG_COLORS[item.category] || 'teal';
-      container.innerHTML += `
-        <div class="card">
-          <span class="card-tag tag-${color}">${item.category}</span>
-          <div class="card-title">${h.title}</div>
-          <div class="card-body">${item.summary}</div>
-          <div class="card-meta">
-            ${item.flag} ${h.date}
-            <span class="source-tag">Good News Network</span>
-            <a href="${h.link}" target="_blank" rel="noopener">Read full story →</a>
-          </div>
-        </div>`;
-    });
+    localStorage.setItem('positivity_news_cache', JSON.stringify(combined));
+    localStorage.setItem('positivity_news_time', Date.now().toString());
+    renderNewsCards(combined);
 
   } catch (e) {
     document.getElementById('news-cards').innerHTML = '';
@@ -598,7 +599,27 @@ Respond ONLY with a JSON array, no markdown, no extra text. Each item must inclu
   } finally {
     btn.classList.remove('loading');
     btn.disabled = false;
+    updateTimestamp();
   }
+}
+
+function renderNewsCards(items) {
+  const container = document.getElementById('news-cards');
+  container.innerHTML = '';
+  items.forEach(item => {
+    const color = TAG_COLORS[item.category] || 'teal';
+    container.innerHTML += `
+      <div class="card">
+        <span class="card-tag tag-${color}">${item.category || 'Inspiring'}</span>
+        <div class="card-title">${item.title || ''}</div>
+        <div class="card-body">${item.summary || ''}</div>
+        <div class="card-meta">
+          ${item.flag || ''} ${item.date || ''}
+          <span class="source-tag">Good News Network</span>
+          <a href="${item.link || '#'}" target="_blank" rel="noopener">Read full story →</a>
+        </div>
+      </div>`;
+  });
 }
 
 async function fetchContent(type) {
@@ -673,6 +694,21 @@ function renderCards(type, items) {
 }
 
 init();
+
+const REFRESH_INTERVAL = 30 * 60 * 1000;
+setInterval(() => {
+  const activeSection = document.querySelector('.section.active');
+  if (activeSection && activeSection.id === 'news') {
+    fetchNews();
+  }
+}, REFRESH_INTERVAL);
+
+function updateTimestamp() {
+  const el = document.getElementById('last-updated');
+  if (!el) return;
+  const now = new Date();
+  el.textContent = '· updated ' + now.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
+}
 </script>
 </body>
 </html>
