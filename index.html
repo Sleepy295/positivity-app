@@ -502,14 +502,32 @@ async function fetchNews() {
 
   try {
     const RSS_URL = 'https://goodnewsnetwork.org/feed/';
-    const PROXY = `https://api.allorigins.win/get?url=${encodeURIComponent(RSS_URL)}`;
 
-    const rssRes = await fetch(PROXY);
-    const proxyData = await rssRes.json();
-    if (!proxyData.contents) throw new Error('Could not load news feed');
+    async function tryFetch(proxyUrl) {
+      const res = await fetch(proxyUrl);
+      if (!res.ok) throw new Error('proxy failed');
+      return res;
+    }
+
+    let xmlText = null;
+    const proxies = [
+      `https://corsproxy.io/?${encodeURIComponent(RSS_URL)}`,
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(RSS_URL)}`,
+      `https://thingproxy.freeboard.io/fetch/${RSS_URL}`
+    ];
+
+    for (const proxy of proxies) {
+      try {
+        const res = await tryFetch(proxy);
+        const text = await res.text();
+        if (text.includes('<item>') || text.includes('<rss')) { xmlText = text; break; }
+      } catch(e) { continue; }
+    }
+
+    if (!xmlText) throw new Error('Could not load news feed — all proxies failed');
 
     const parser = new DOMParser();
-    const xml = parser.parseFromString(proxyData.contents, 'text/xml');
+    const xml = parser.parseFromString(xmlText, 'text/xml');
     const xmlItems = Array.from(xml.querySelectorAll('item')).slice(0, 6);
     if (!xmlItems.length) throw new Error('Could not parse news feed');
 
